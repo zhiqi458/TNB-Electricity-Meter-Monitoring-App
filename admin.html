@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理员监控后台 - TNB 电表管理</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; padding: 20px; margin: 0; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    h2, h3 { margin-top: 0; color: #1a1a1a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #e1e4e8; padding: 12px; text-align: left; }
+    th { background: #f8f9fa; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+    .badge-danger { background: #dc3545; }
+    .badge-warning { background: #ffc107; color: #212529; }
+    input[type="number"], input[type="time"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .btn { background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>TNB 电表监控系统 - 管理员控制台</h2>
+
+  <!-- 电表参数配置卡片 -->
+  <div class="card">
+    <h3>电表配置与用量限制设置</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>建筑物 / 电表名称</th>
+          <th>最新读数 (kWh)</th>
+          <th>每日用量上限 (kWh)</th>
+          <th>每日截止提交时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="metersTable">
+        <!-- 动态加载 -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 警报与缺失提醒日志卡片 -->
+  <div class="card">
+    <h3>系统警报日志 (超标警报 & 缺失提醒)</h3>
+    <button class="btn" onclick="fetchAlerts()" style="margin-bottom: 10px;">刷新警报列表</button>
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>建筑物</th>
+          <th>警报类型</th>
+          <th>警报详细内容</th>
+        </tr>
+      </thead>
+      <tbody id="alertsTable">
+        <!-- 动态加载 -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  async function fetchMeters() {
+    const res = await fetch('admin_api.php?action=get_meters');
+    const json = await res.json();
+    if (json.status === 'success') {
+      const tbody = document.getElementById('metersTable');
+      tbody.innerHTML = json.data.map(m => `
+        <tr>
+          <td>${m.id}</td>
+          <td><b>${m.building_name}</b> (${m.meter_code})</td>
+          <td>${m.last_reading ?? '无记录'}</td>
+          <td><input type="number" id="limit_${m.id}" value="${m.daily_limit_kwh}" step="0.01"></td>
+          <td><input type="time" id="deadline_${m.id}" value="${m.submission_deadline}"></td>
+          <td><button class="btn" onclick="updateMeter(${m.id})">保存设置</button></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  async function updateMeter(id) {
+    const limit = document.getElementById(`limit_${id}`).value;
+    const deadline = document.getElementById(`deadline_${id}`).value;
+
+    const formData = new FormData();
+    formData.append('meter_id', id);
+    formData.append('daily_limit_kwh', limit);
+    formData.append('submission_deadline', deadline);
+
+    const res = await fetch('admin_api.php?action=update_meter', { method: 'POST', body: formData });
+    const json = await res.json();
+    alert(json.message);
+    fetchMeters();
+  }
+
+  async function fetchAlerts() {
+    const res = await fetch('admin_api.php?action=get_alerts');
+    const json = await res.json();
+    if (json.status === 'success') {
+      const tbody = document.getElementById('alertsTable');
+      tbody.innerHTML = json.data.map(a => `
+        <tr>
+          <td>${a.created_at}</td>
+          <td>${a.building_name}</td>
+          <td>
+            <span class="badge ${a.alert_type === 'OVER_USAGE' ? 'badge-danger' : 'badge-warning'}">
+              ${a.alert_type === 'OVER_USAGE' ? '用量超标' : '缺失读数'}
+            </span>
+          </td>
+          <td>${a.message}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // 初始化加载
+  fetchMeters();
+  fetchAlerts();
+</script>
+
+</body>
+</html>
